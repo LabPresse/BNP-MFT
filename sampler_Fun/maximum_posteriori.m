@@ -1,0 +1,76 @@
+function[Data] = maximum_posteriori( ...
+    ...
+Data  , Trace_size    , Num_part  , AAA           , ...
+BB    , x             , i         , Num_confocals )
+
+B=0;
+constant=0;
+Traces_size=length(Trace_size);
+kk_diffusion=0;
+Initial_pos=0;
+for k = 1:Traces_size
+   
+    B = B+sum(Data.b(end,(k-1)*Num_part+1:k*Num_part));
+
+    kk_diffusion = kk_diffusion - ...
+                   1.5*Num_part*sum(log(4*pi*Data.Trace_partial{k}(1,1:end-1)*Data.D(end)))- ...
+                   sum( (ones(1,3*Num_part)*(diff(x{k},1,2).^2))./...
+                        (4*Data.D(end)*Data.Trace_partial{k}(1,1:end-1))  );
+
+    GG_1 = zeros(Trace_size(k),Num_confocals);
+
+    for n=1:Num_part
+        GG_1 = GG_1 + Data.b(end,(k-1)*Num_part+n).* ...
+                Data.gg( x{k}(AAA(1,n),1:Trace_size(k))',...
+                         x{k}(AAA(2,n),1:Trace_size(k))',...
+                         x{k}(AAA(3,n),1:Trace_size(k))');
+                     
+        Initial_pos=Initial_pos-0.5*log(2*pi*Data.var_prior_xyz(1))-...
+                                ((x{k}(AAA(1,n),1)-...
+                                  Data.mu_prior_xyz(1))^2)/...
+                                  (2*Data.var_prior_xyz(1));
+                              
+        Initial_pos=Initial_pos-0.5*log(2*pi*Data.var_prior_xyz(2))-...
+                                ((x{k}(AAA(2,n),1)-...
+                                  Data.mu_prior_xyz(2))^2)/...
+                                  (2*Data.var_prior_xyz(2));
+                              
+        Initial_pos=Initial_pos-0.5*log(2*pi*Data.var_prior_xyz(3))-...
+                                ((x{k}(AAA(3,n),1)-...
+                                  Data.mu_prior_xyz(3))^2)/...
+                                  (2*Data.var_prior_xyz(3));
+    end
+    
+    GG_1p=(Data.mu_back(end,:)+ (Data.mu(end,:).*GG_1))';
+
+     constant = constant-Data.Trace_partial{k}(1,1:end-1)*sum(GG_1p(:,1:end-1),1)'...
+         +sum( log(GG_1p(BB{k}(1:end-1))./GG_1p(BB{k}(1:end-1))) )+...
+              log(GG_1p(BB{k}(end))./sum(GG_1p(:,end)));
+end
+
+
+
+BBB=B*log(Data.Q)+(Num_part*length(Trace_size)-B)*log(1-Data.Q+eps);
+
+DD=(Data.D_alpha).*log(Data.D_beta)-gammaln(Data.D_alpha)-...
+    (Data.D_alpha+1)*log(Data.D(end))- (Data.D_beta/Data.D(end));
+
+log_mu=-Traces_size*(Data.mu_alpha*log(Data.mu_beta)+gammaln(Data.mu_alpha))+...
+    sum((Data.mu_alpha-1).*log(Data.mu(end,:)) -  Data.mu(end,:)./Data.mu_beta);
+
+log_mu_back=-Traces_size*(Data.mu_back_alpha*log(Data.mu_back_beta)+gammaln(Data.mu_back_alpha))+...
+    sum((Data.mu_back_alpha-1).*log(Data.mu_back(end,:)) -  Data.mu_back(end,:)./Data.mu_back_beta);
+
+Data.log_post(i) = constant+BBB+DD + kk_diffusion + log_mu + log_mu_back + Initial_pos;
+% Data.log_post(i) = constant+BBB+DD + kk_diffusion + log_mu + log_mu_back;
+if Data.log_post(i)>max(Data.log_post(1:i-1))
+    for k=1:Traces_size
+        Data.x_max{k}=x{k};
+        Data.b_max(1,(k-1)*Num_part+1:k*Num_part)=Data.b(i,(k-1)*Num_part+1:k*Num_part);
+    end
+    Data.D_max       = Data.D(i)         ;
+    Data.mu_max      = Data.mu(i,:)      ;
+    Data.mu_back_max = Data.mu_back(i,:) ;
+end
+
+end
